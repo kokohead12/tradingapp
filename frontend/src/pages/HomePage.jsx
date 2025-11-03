@@ -129,16 +129,16 @@ function HomePage() {
           icon="💔"
         />
         <MetricCard
-          label="Avg P&L"
-          value={`$${stats?.avg_profit_loss?.toFixed(2) || '0.00'}`}
-          positive={stats?.avg_profit_loss >= 0}
-          icon="💰"
+          label="Avg Win"
+          value={`$${((stats?.total_profit_loss || 0) / (stats?.winning_trades || 1)).toFixed(2)}`}
+          positive={true}
+          icon="✅"
         />
         <MetricCard
-          label="Open Positions"
-          value={stats?.open_trades || 0}
-          neutral={true}
-          icon="⏳"
+          label="Avg Loss"
+          value={`$${Math.abs(((stats?.total_profit_loss || 0) - ((stats?.total_profit_loss || 0) / (stats?.winning_trades || 1)) * (stats?.winning_trades || 0)) / (stats?.losing_trades || 1)).toFixed(2)}`}
+          positive={false}
+          icon="❌"
         />
       </div>
 
