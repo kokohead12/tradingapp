@@ -1,6 +1,6 @@
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const fs = require('fs');
 const path = require('path');
 const multer = require('multer');
@@ -13,70 +13,76 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
-// Database setup
-const dbPath = path.join(__dirname, 'trading.db');
-const db = new sqlite3.Database(dbPath, (err) => {
+// PostgreSQL connection pool
+const pool = new Pool({
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  user: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME || 'tradingjournal',
+});
+
+// Test database connection
+pool.connect((err, client, release) => {
   if (err) {
-    console.error('Error opening database:', err);
-  } else {
-    console.log('Connected to SQLite database');
-    initializeDatabase();
+    console.error('Error connecting to PostgreSQL database:', err);
+    return;
   }
+  console.log('Connected to PostgreSQL database');
+  release();
+  initializeDatabase();
 });
 
 // Initialize database with schema
-function initializeDatabase() {
-  const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
-  db.exec(schema, (err) => {
-    if (err) {
-      console.error('Error initializing database:', err);
-    } else {
-      console.log('Database initialized successfully');
-    }
-  });
+async function initializeDatabase() {
+  try {
+    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+    await pool.query(schema);
+    console.log('Database initialized successfully');
+  } catch (err) {
+    console.error('Error initializing database:', err);
+  }
 }
 
 // ==================== TRADE ROUTES ====================
 
 // Get all trades
-app.get('/api/trades', (req, res) => {
+app.get('/api/trades', async (req, res) => {
   const { status } = req.query;
   let query = 'SELECT * FROM trades';
   const params = [];
 
   if (status) {
-    query += ' WHERE status = ?';
+    query += ' WHERE status = $1';
     params.push(status);
   }
 
   query += ' ORDER BY entry_date DESC';
 
-  db.all(query, params, (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const result = await pool.query(query, params);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get single trade
-app.get('/api/trades/:id', (req, res) => {
-  db.get('SELECT * FROM trades WHERE id = ?', [req.params.id], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (!row) {
+app.get('/api/trades/:id', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM trades WHERE id = $1', [req.params.id]);
+    if (result.rows.length === 0) {
       res.status(404).json({ error: 'Trade not found' });
       return;
     }
-    res.json(row);
-  });
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Create new trade
-app.post('/api/trades', (req, res) => {
+app.post('/api/trades', async (req, res) => {
   const {
     symbol,
     trade_type,
@@ -113,28 +119,24 @@ app.post('/api/trades', (req, res) => {
       symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
       quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
       fees, status, strategy, notes, screenshot_url
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+    RETURNING id
   `;
 
-  db.run(
-    query,
-    [
+  try {
+    const result = await pool.query(query, [
       symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
       quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
       fees, status, strategy, notes, screenshot_url
-    ],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.status(201).json({ id: this.lastID, message: 'Trade created successfully' });
-    }
-  );
+    ]);
+    res.status(201).json({ id: result.rows[0].id, message: 'Trade created successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Update trade
-app.put('/api/trades/:id', (req, res) => {
+app.put('/api/trades/:id', async (req, res) => {
   const {
     symbol,
     trade_type,
@@ -168,86 +170,78 @@ app.put('/api/trades/:id', (req, res) => {
 
   const query = `
     UPDATE trades SET
-      symbol = ?, trade_type = ?, entry_date = ?, exit_date = ?,
-      entry_price = ?, exit_price = ?, quantity = ?, stop_loss = ?,
-      take_profit = ?, profit_loss = ?, profit_loss_percent = ?,
-      fees = ?, status = ?, strategy = ?, notes = ?, screenshot_url = ?,
+      symbol = $1, trade_type = $2, entry_date = $3, exit_date = $4,
+      entry_price = $5, exit_price = $6, quantity = $7, stop_loss = $8,
+      take_profit = $9, profit_loss = $10, profit_loss_percent = $11,
+      fees = $12, status = $13, strategy = $14, notes = $15, screenshot_url = $16,
       updated_at = CURRENT_TIMESTAMP
-    WHERE id = ?
+    WHERE id = $17
   `;
 
-  db.run(
-    query,
-    [
+  try {
+    const result = await pool.query(query, [
       symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
       quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
       fees, status, strategy, notes, screenshot_url, req.params.id
-    ],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      if (this.changes === 0) {
-        res.status(404).json({ error: 'Trade not found' });
-        return;
-      }
-      res.json({ message: 'Trade updated successfully' });
+    ]);
+    if (result.rowCount === 0) {
+      res.status(404).json({ error: 'Trade not found' });
+      return;
     }
-  );
+    res.json({ message: 'Trade updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Delete trade
-app.delete('/api/trades/:id', (req, res) => {
-  db.run('DELETE FROM trades WHERE id = ?', [req.params.id], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    if (this.changes === 0) {
+app.delete('/api/trades/:id', async (req, res) => {
+  try {
+    const result = await pool.query('DELETE FROM trades WHERE id = $1', [req.params.id]);
+    if (result.rowCount === 0) {
       res.status(404).json({ error: 'Trade not found' });
       return;
     }
     res.json({ message: 'Trade deleted successfully' });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ==================== STATISTICS ROUTES ====================
 
 // Get trading statistics
-app.get('/api/stats', (req, res) => {
-  const stats = {};
+app.get('/api/stats', async (req, res) => {
+  try {
+    // Get overall stats
+    const overallQuery = `
+      SELECT
+        COUNT(*) as total_trades,
+        SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) as closed_trades,
+        SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open_trades,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
+        SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
+        SUM(profit_loss) as total_profit_loss,
+        AVG(profit_loss) as avg_profit_loss,
+        MAX(profit_loss) as best_trade,
+        MIN(profit_loss) as worst_trade,
+        AVG(profit_loss_percent) as avg_return_percent
+      FROM trades
+      WHERE status = 'CLOSED'
+    `;
 
-  // Get overall stats
-  const overallQuery = `
-    SELECT
-      COUNT(*) as total_trades,
-      SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) as closed_trades,
-      SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open_trades,
-      SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
-      SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
-      SUM(profit_loss) as total_profit_loss,
-      AVG(profit_loss) as avg_profit_loss,
-      MAX(profit_loss) as best_trade,
-      MIN(profit_loss) as worst_trade,
-      AVG(profit_loss_percent) as avg_return_percent
-    FROM trades
-    WHERE status = 'CLOSED'
-  `;
-
-  db.get(overallQuery, [], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+    const overallResult = await pool.query(overallQuery);
+    const row = overallResult.rows[0];
 
     const winRate = row.closed_trades > 0
       ? (row.winning_trades / row.closed_trades) * 100
       : 0;
 
-    stats.overall = {
-      ...row,
-      win_rate: winRate.toFixed(2)
+    const stats = {
+      overall: {
+        ...row,
+        win_rate: winRate.toFixed(2)
+      }
     };
 
     // Get stats by symbol
@@ -265,83 +259,75 @@ app.get('/api/stats', (req, res) => {
       ORDER BY total_pl DESC
     `;
 
-    db.all(symbolQuery, [], (err, rows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
+    const symbolResult = await pool.query(symbolQuery);
+    stats.by_symbol = symbolResult.rows.map(row => ({
+      ...row,
+      win_rate: ((row.wins / row.total) * 100).toFixed(2)
+    }));
 
-      stats.by_symbol = rows.map(row => ({
-        ...row,
-        win_rate: ((row.wins / row.total) * 100).toFixed(2)
-      }));
-
-      res.json(stats);
-    });
-  });
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get monthly performance
-app.get('/api/stats/monthly', (req, res) => {
+app.get('/api/stats/monthly', async (req, res) => {
   const query = `
     SELECT
-      strftime('%Y-%m', entry_date) as month,
+      TO_CHAR(entry_date, 'YYYY-MM') as month,
       COUNT(*) as trades_count,
       SUM(profit_loss) as total_pl,
       SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
       COUNT(*) as total
     FROM trades
     WHERE status = 'CLOSED'
-    GROUP BY month
+    GROUP BY TO_CHAR(entry_date, 'YYYY-MM')
     ORDER BY month DESC
   `;
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    const result = rows.map(row => ({
+  try {
+    const result = await pool.query(query);
+    const formatted = result.rows.map(row => ({
       ...row,
       win_rate: ((row.wins / row.total) * 100).toFixed(2)
     }));
-
-    res.json(result);
-  });
+    res.json(formatted);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ==================== ADVANCED ANALYTICS ROUTES ====================
 
 // Get daily P&L for calendar heatmap
-app.get('/api/analytics/daily', (req, res) => {
+app.get('/api/analytics/daily', async (req, res) => {
   const query = `
     SELECT
-      DATE(entry_date) as date,
+      entry_date::date as date,
       COUNT(*) as trades_count,
       SUM(profit_loss) as daily_pl,
       SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losses
     FROM trades
     WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
-    GROUP BY DATE(entry_date)
+    GROUP BY entry_date::date
     ORDER BY date DESC
   `;
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+  try {
+    const result = await pool.query(query);
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get equity curve data
-app.get('/api/analytics/equity-curve', (req, res) => {
+app.get('/api/analytics/equity-curve', async (req, res) => {
   const query = `
     SELECT
-      DATE(entry_date) as date,
+      entry_date::date as date,
       entry_date,
       symbol,
       profit_loss
@@ -350,96 +336,88 @@ app.get('/api/analytics/equity-curve', (req, res) => {
     ORDER BY entry_date ASC
   `;
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    const result = await pool.query(query);
 
     // Calculate cumulative P&L
     let cumulative = 0;
-    const equityCurve = rows.map(row => {
-      cumulative += row.profit_loss;
+    const equityCurve = result.rows.map(row => {
+      cumulative += parseFloat(row.profit_loss);
       return {
         date: row.date,
         cumulative_pl: cumulative,
-        trade_pl: row.profit_loss,
+        trade_pl: parseFloat(row.profit_loss),
         symbol: row.symbol
       };
     });
 
     res.json(equityCurve);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get time-based analysis
-app.get('/api/analytics/time', (req, res) => {
-  // Hour of day analysis
-  const hourQuery = `
-    SELECT
-      CAST(strftime('%H', entry_date) AS INTEGER) as hour,
-      COUNT(*) as trades_count,
-      SUM(profit_loss) as total_pl,
-      AVG(profit_loss) as avg_pl,
-      SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
-      COUNT(*) as total
-    FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
-    GROUP BY hour
-    ORDER BY hour ASC
-  `;
+app.get('/api/analytics/time', async (req, res) => {
+  try {
+    // Hour of day analysis
+    const hourQuery = `
+      SELECT
+        EXTRACT(HOUR FROM entry_date)::integer as hour,
+        COUNT(*) as trades_count,
+        SUM(profit_loss) as total_pl,
+        AVG(profit_loss) as avg_pl,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
+        COUNT(*) as total
+      FROM trades
+      WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+      GROUP BY EXTRACT(HOUR FROM entry_date)
+      ORDER BY hour ASC
+    `;
 
-  // Day of week analysis
-  const dayQuery = `
-    SELECT
-      CAST(strftime('%w', entry_date) AS INTEGER) as day_of_week,
-      COUNT(*) as trades_count,
-      SUM(profit_loss) as total_pl,
-      AVG(profit_loss) as avg_pl,
-      SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
-      COUNT(*) as total
-    FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
-    GROUP BY day_of_week
-    ORDER BY day_of_week ASC
-  `;
+    // Day of week analysis
+    const dayQuery = `
+      SELECT
+        EXTRACT(DOW FROM entry_date)::integer as day_of_week,
+        COUNT(*) as trades_count,
+        SUM(profit_loss) as total_pl,
+        AVG(profit_loss) as avg_pl,
+        SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
+        COUNT(*) as total
+      FROM trades
+      WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+      GROUP BY EXTRACT(DOW FROM entry_date)
+      ORDER BY day_of_week ASC
+    `;
 
-  db.all(hourQuery, [], (err, hourData) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+    const hourResult = await pool.query(hourQuery);
+    const dayResult = await pool.query(dayQuery);
 
-    db.all(dayQuery, [], (err, dayData) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-      const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const formattedHourData = hourResult.rows.map(row => ({
+      ...row,
+      hour_label: `${row.hour}:00`,
+      win_rate: ((row.wins / row.total) * 100).toFixed(2)
+    }));
 
-      const formattedHourData = hourData.map(row => ({
-        ...row,
-        hour_label: `${row.hour}:00`,
-        win_rate: ((row.wins / row.total) * 100).toFixed(2)
-      }));
+    const formattedDayData = dayResult.rows.map(row => ({
+      ...row,
+      day_name: dayNames[row.day_of_week],
+      win_rate: ((row.wins / row.total) * 100).toFixed(2)
+    }));
 
-      const formattedDayData = dayData.map(row => ({
-        ...row,
-        day_name: dayNames[row.day_of_week],
-        win_rate: ((row.wins / row.total) * 100).toFixed(2)
-      }));
-
-      res.json({
-        by_hour: formattedHourData,
-        by_day: formattedDayData
-      });
+    res.json({
+      by_hour: formattedHourData,
+      by_day: formattedDayData
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get strategy/setup performance
-app.get('/api/analytics/strategies', (req, res) => {
+app.get('/api/analytics/strategies', async (req, res) => {
   const query = `
     SELECT
       COALESCE(strategy, 'No Strategy') as strategy,
@@ -457,25 +435,22 @@ app.get('/api/analytics/strategies', (req, res) => {
     ORDER BY total_pl DESC
   `;
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    const formatted = rows.map(row => ({
+  try {
+    const result = await pool.query(query);
+    const formatted = result.rows.map(row => ({
       ...row,
       win_rate: ((row.wins / row.total) * 100).toFixed(2),
       avg_win: row.wins > 0 ? (row.total_pl / row.wins).toFixed(2) : 0,
       avg_loss: row.losses > 0 ? (Math.abs(row.total_pl - (row.total_pl / row.wins) * row.wins) / row.losses).toFixed(2) : 0
     }));
-
     res.json(formatted);
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get advanced metrics
-app.get('/api/analytics/advanced-metrics', (req, res) => {
+app.get('/api/analytics/advanced-metrics', async (req, res) => {
   const query = `
     SELECT
       COUNT(*) as total_trades,
@@ -490,11 +465,9 @@ app.get('/api/analytics/advanced-metrics', (req, res) => {
     WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
   `;
 
-  db.get(query, [], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    const result = await pool.query(query);
+    const row = result.rows[0];
 
     const winRate = row.total_trades > 0 ? (row.winning_trades / row.total_trades) : 0;
     const profitFactor = row.gross_loss > 0 ? (row.gross_profit / row.gross_loss) : 0;
@@ -509,53 +482,50 @@ app.get('/api/analytics/advanced-metrics', (req, res) => {
       ORDER BY entry_date ASC
     `;
 
-    db.all(equityQuery, [], (err, equityRows) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
+    const equityResult = await pool.query(equityQuery);
+
+    let cumulative = 0;
+    let peak = 0;
+    let maxDrawdown = 0;
+
+    equityResult.rows.forEach(trade => {
+      cumulative += parseFloat(trade.profit_loss);
+      if (cumulative > peak) {
+        peak = cumulative;
       }
-
-      let cumulative = 0;
-      let peak = 0;
-      let maxDrawdown = 0;
-
-      equityRows.forEach(trade => {
-        cumulative += trade.profit_loss;
-        if (cumulative > peak) {
-          peak = cumulative;
-        }
-        const drawdown = peak - cumulative;
-        if (drawdown > maxDrawdown) {
-          maxDrawdown = drawdown;
-        }
-      });
-
-      res.json({
-        profit_factor: profitFactor.toFixed(2),
-        avg_rr_ratio: avgRR.toFixed(2),
-        expectancy: expectancy.toFixed(2),
-        max_drawdown: maxDrawdown.toFixed(2),
-        gross_profit: row.gross_profit?.toFixed(2) || '0.00',
-        gross_loss: row.gross_loss?.toFixed(2) || '0.00',
-        net_profit: row.net_profit?.toFixed(2) || '0.00',
-        win_rate: (winRate * 100).toFixed(2),
-        avg_win: row.avg_win?.toFixed(2) || '0.00',
-        avg_loss: row.avg_loss?.toFixed(2) || '0.00'
-      });
+      const drawdown = peak - cumulative;
+      if (drawdown > maxDrawdown) {
+        maxDrawdown = drawdown;
+      }
     });
-  });
+
+    res.json({
+      profit_factor: profitFactor.toFixed(2),
+      avg_rr_ratio: avgRR.toFixed(2),
+      expectancy: expectancy.toFixed(2),
+      max_drawdown: maxDrawdown.toFixed(2),
+      gross_profit: parseFloat(row.gross_profit || 0).toFixed(2),
+      gross_loss: parseFloat(row.gross_loss || 0).toFixed(2),
+      net_profit: parseFloat(row.net_profit || 0).toFixed(2),
+      win_rate: (winRate * 100).toFixed(2),
+      avg_win: parseFloat(row.avg_win || 0).toFixed(2),
+      avg_loss: parseFloat(row.avg_loss || 0).toFixed(2)
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Get hold time analysis
-app.get('/api/analytics/hold-time', (req, res) => {
+app.get('/api/analytics/hold-time', async (req, res) => {
   const query = `
     SELECT
       symbol,
       entry_date,
       exit_date,
       profit_loss,
-      JULIANDAY(exit_date) - JULIANDAY(entry_date) as hold_days,
-      (JULIANDAY(exit_date) - JULIANDAY(entry_date)) * 24 as hold_hours
+      EXTRACT(EPOCH FROM (exit_date - entry_date)) / 86400 as hold_days,
+      EXTRACT(EPOCH FROM (exit_date - entry_date)) / 3600 as hold_hours
     FROM trades
     WHERE status = 'CLOSED'
       AND exit_date IS NOT NULL
@@ -563,41 +533,39 @@ app.get('/api/analytics/hold-time', (req, res) => {
     ORDER BY entry_date ASC
   `;
 
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
+  try {
+    const result = await pool.query(query);
+    const rows = result.rows;
 
-    const winners = rows.filter(t => t.profit_loss > 0);
-    const losers = rows.filter(t => t.profit_loss < 0);
+    const winners = rows.filter(t => parseFloat(t.profit_loss) > 0);
+    const losers = rows.filter(t => parseFloat(t.profit_loss) < 0);
 
     const avgHoldWinners = winners.length > 0
-      ? winners.reduce((sum, t) => sum + t.hold_hours, 0) / winners.length
+      ? winners.reduce((sum, t) => sum + parseFloat(t.hold_hours), 0) / winners.length
       : 0;
 
     const avgHoldLosers = losers.length > 0
-      ? losers.reduce((sum, t) => sum + t.hold_hours, 0) / losers.length
+      ? losers.reduce((sum, t) => sum + parseFloat(t.hold_hours), 0) / losers.length
       : 0;
 
     const avgHoldAll = rows.length > 0
-      ? rows.reduce((sum, t) => sum + t.hold_hours, 0) / rows.length
+      ? rows.reduce((sum, t) => sum + parseFloat(t.hold_hours), 0) / rows.length
       : 0;
 
     // Group by hold time ranges
     const holdRanges = {
-      '< 1 hour': rows.filter(t => t.hold_hours < 1),
-      '1-4 hours': rows.filter(t => t.hold_hours >= 1 && t.hold_hours < 4),
-      '4-8 hours': rows.filter(t => t.hold_hours >= 4 && t.hold_hours < 8),
-      '1-3 days': rows.filter(t => t.hold_days >= 1 && t.hold_days < 3),
-      '3-7 days': rows.filter(t => t.hold_days >= 3 && t.hold_days < 7),
-      '7+ days': rows.filter(t => t.hold_days >= 7)
+      '< 1 hour': rows.filter(t => parseFloat(t.hold_hours) < 1),
+      '1-4 hours': rows.filter(t => parseFloat(t.hold_hours) >= 1 && parseFloat(t.hold_hours) < 4),
+      '4-8 hours': rows.filter(t => parseFloat(t.hold_hours) >= 4 && parseFloat(t.hold_hours) < 8),
+      '1-3 days': rows.filter(t => parseFloat(t.hold_days) >= 1 && parseFloat(t.hold_days) < 3),
+      '3-7 days': rows.filter(t => parseFloat(t.hold_days) >= 3 && parseFloat(t.hold_days) < 7),
+      '7+ days': rows.filter(t => parseFloat(t.hold_days) >= 7)
     };
 
     const rangeStats = Object.keys(holdRanges).map(range => {
       const trades = holdRanges[range];
-      const wins = trades.filter(t => t.profit_loss > 0).length;
-      const totalPL = trades.reduce((sum, t) => sum + t.profit_loss, 0);
+      const wins = trades.filter(t => parseFloat(t.profit_loss) > 0).length;
+      const totalPL = trades.reduce((sum, t) => sum + parseFloat(t.profit_loss), 0);
 
       return {
         range,
@@ -616,37 +584,36 @@ app.get('/api/analytics/hold-time', (req, res) => {
       by_range: rangeStats,
       all_trades: rows
     });
-  });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ==================== TAG ROUTES ====================
 
 // Get all tags
-app.get('/api/tags', (req, res) => {
-  db.all('SELECT * FROM tags ORDER BY name', [], (err, rows) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(rows);
-  });
+app.get('/api/tags', async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM tags ORDER BY name');
+    res.json(result.rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Create tag
-app.post('/api/tags', (req, res) => {
+app.post('/api/tags', async (req, res) => {
   const { name, color } = req.body;
 
-  db.run(
-    'INSERT INTO tags (name, color) VALUES (?, ?)',
-    [name, color || '#3B82F6'],
-    function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.status(201).json({ id: this.lastID, message: 'Tag created successfully' });
-    }
-  );
+  try {
+    const result = await pool.query(
+      'INSERT INTO tags (name, color) VALUES ($1, $2) RETURNING id',
+      [name, color || '#3B82F6']
+    );
+    res.status(201).json({ id: result.rows[0].id, message: 'Tag created successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ==================== CSV IMPORT ROUTES ====================
@@ -713,15 +680,12 @@ app.post('/api/import/csv', upload.single('file'), async (req, res) => {
         const externalId = `csv_${trade.symbol}_${trade.entry_date}_${trade.entry_price}_${trade.quantity}`;
 
         // Check for duplicates
-        const existing = await new Promise((resolve) => {
-          db.get(
-            'SELECT id FROM imported_trades WHERE external_id = ?',
-            [externalId],
-            (err, row) => resolve(row)
-          );
-        });
+        const existing = await pool.query(
+          'SELECT id FROM imported_trades WHERE external_id = $1',
+          [externalId]
+        );
 
-        if (existing) {
+        if (existing.rows.length > 0) {
           skipped++;
           continue;
         }
@@ -750,48 +714,39 @@ app.post('/api/import/csv', upload.single('file'), async (req, res) => {
         }
 
         // Insert trade
-        const tradeId = await new Promise((resolve, reject) => {
-          db.run(
-            `INSERT INTO trades (
-              symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
-              quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
-              fees, status, strategy, notes
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-              trade.symbol,
-              trade.type.toUpperCase(),
-              trade.entry_date,
-              trade.exit_date || null,
-              parseFloat(trade.entry_price),
-              trade.exit_price ? parseFloat(trade.exit_price) : null,
-              parseInt(trade.quantity),
-              trade.stop_loss ? parseFloat(trade.stop_loss) : null,
-              trade.take_profit ? parseFloat(trade.take_profit) : null,
-              profitLoss,
-              profitLossPercent,
-              trade.fees ? parseFloat(trade.fees) : 0,
-              status,
-              trade.strategy || null,
-              trade.notes || null
-            ],
-            function(err) {
-              if (err) reject(err);
-              else resolve(this.lastID);
-            }
-          );
-        });
+        const tradeResult = await pool.query(
+          `INSERT INTO trades (
+            symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
+            quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
+            fees, status, strategy, notes
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+          RETURNING id`,
+          [
+            trade.symbol,
+            trade.type.toUpperCase(),
+            trade.entry_date,
+            trade.exit_date || null,
+            parseFloat(trade.entry_price),
+            trade.exit_price ? parseFloat(trade.exit_price) : null,
+            parseInt(trade.quantity),
+            trade.stop_loss ? parseFloat(trade.stop_loss) : null,
+            trade.take_profit ? parseFloat(trade.take_profit) : null,
+            profitLoss,
+            profitLossPercent,
+            trade.fees ? parseFloat(trade.fees) : 0,
+            status,
+            trade.strategy || null,
+            trade.notes || null
+          ]
+        );
+
+        const tradeId = tradeResult.rows[0].id;
 
         // Track as imported
-        await new Promise((resolve, reject) => {
-          db.run(
-            'INSERT INTO imported_trades (external_id, source, trade_id) VALUES (?, ?, ?)',
-            [externalId, 'csv', tradeId],
-            (err) => {
-              if (err) reject(err);
-              else resolve();
-            }
-          );
-        });
+        await pool.query(
+          'INSERT INTO imported_trades (external_id, source, trade_id) VALUES ($1, $2, $3)',
+          [externalId, 'csv', tradeId]
+        );
 
         imported++;
       } catch (error) {
@@ -824,12 +779,13 @@ app.listen(PORT, () => {
 });
 
 // Graceful shutdown
-process.on('SIGINT', () => {
-  db.close((err) => {
-    if (err) {
-      console.error('Error closing database:', err);
-    }
-    console.log('Database connection closed');
+process.on('SIGINT', async () => {
+  try {
+    await pool.end();
+    console.log('Database connection pool closed');
     process.exit(0);
-  });
+  } catch (err) {
+    console.error('Error closing database pool:', err);
+    process.exit(1);
+  }
 });

@@ -1,11 +1,11 @@
--- Trading Journal Database Schema
+-- Trading Journal Database Schema (PostgreSQL)
 
 CREATE TABLE IF NOT EXISTS trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     symbol VARCHAR(10) NOT NULL,
     trade_type VARCHAR(10) NOT NULL CHECK(trade_type IN ('LONG', 'SHORT')),
-    entry_date DATETIME NOT NULL,
-    exit_date DATETIME,
+    entry_date TIMESTAMP NOT NULL,
+    exit_date TIMESTAMP,
     entry_price DECIMAL(10, 2) NOT NULL,
     exit_price DECIMAL(10, 2),
     quantity INTEGER NOT NULL,
@@ -18,15 +18,15 @@ CREATE TABLE IF NOT EXISTS trades (
     strategy VARCHAR(100),
     notes TEXT,
     screenshot_url TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS tags (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     name VARCHAR(50) UNIQUE NOT NULL,
     color VARCHAR(7) DEFAULT '#3B82F6',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS trade_tags (
@@ -43,11 +43,11 @@ CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 
 -- Track imported trades to avoid duplicates
 CREATE TABLE IF NOT EXISTS imported_trades (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     external_id TEXT UNIQUE NOT NULL,
     source VARCHAR(20) DEFAULT 'csv',
     trade_id INTEGER,
-    imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    imported_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE SET NULL
 );
 
