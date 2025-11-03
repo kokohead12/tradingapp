@@ -79,6 +79,64 @@ The app will run on `http://localhost:3000`
 3. **Open your browser**
 Navigate to `http://localhost:3000`
 
+## Tradovate Integration
+
+The app includes integration with Tradovate to automatically import your trades.
+
+### Setup Instructions
+
+1. **Navigate to Tradovate Settings**
+   - Open the app and click "Tradovate" in the navigation menu
+
+2. **Enter Your Credentials**
+   - Username: Your Tradovate login username
+   - Password: Your Tradovate login password
+   - Environment: Select "Demo" or "Live"
+
+3. **Test Connection**
+   - Click "Test Connection" to verify your credentials work
+   - You should see a success message if credentials are correct
+
+4. **Save Settings**
+   - Click "Save Settings" to store your credentials
+   - Your password is encrypted and stored securely
+
+5. **Sync Trades**
+   - Click "Sync Trades from Tradovate Now" to import today's trades
+   - Run this daily to keep your journal up to date
+
+### Important Notes
+
+- **Demo Accounts**: Use your regular username/password (free)
+- **Live Accounts**: Requires API Access subscription ($25/month from Tradovate)
+- **API Limitation**: Tradovate API only returns fills from the current day
+- **Best Practice**: Run sync at the end of each trading day
+- **Duplicate Prevention**: The system tracks imported trades and won't create duplicates
+
+### Tradovate API Endpoints
+
+The integration uses the following Tradovate API endpoints:
+- `POST /auth/accesstokenrequest` - Authentication
+- `GET /account/list` - Get account information
+- `GET /fill/list` - Get trade fills/executions
+- `GET /contract/item` - Get contract details for symbols
+
+### Troubleshooting
+
+**Connection Failed:**
+- Verify your username and password are correct
+- Make sure you selected the correct environment (Demo/Live)
+- Check that your Tradovate account is active
+
+**No Trades Imported:**
+- The API only returns today's trades
+- Make sure you have executed trades today
+- Try running the sync after market close
+
+**Duplicate Trades:**
+- The system automatically prevents duplicates
+- Trades are tracked by their unique Tradovate order ID
+
 ## API Endpoints
 
 ### Trades
@@ -96,6 +154,13 @@ Navigate to `http://localhost:3000`
 - `GET /api/tags` - Get all tags
 - `POST /api/tags` - Create new tag
 
+### Tradovate Integration
+- `GET /api/tradovate/settings` - Get Tradovate settings
+- `POST /api/tradovate/settings` - Save Tradovate credentials
+- `POST /api/tradovate/test` - Test Tradovate connection
+- `POST /api/tradovate/sync` - Manually sync trades from Tradovate
+- `DELETE /api/tradovate/settings` - Delete Tradovate settings
+
 ### Health Check
 - `GET /api/health` - API health check
 
@@ -106,6 +171,8 @@ The app uses SQLite with the following main tables:
 - **trades**: Stores all trade information (symbol, prices, P&L, etc.)
 - **tags**: Custom tags for organizing trades
 - **trade_tags**: Many-to-many relationship between trades and tags
+- **tradovate_settings**: Stores Tradovate API credentials and sync settings
+- **imported_trades**: Tracks trades imported from external sources to prevent duplicates
 
 ## Project Structure
 
@@ -132,6 +199,8 @@ tradingapp/
 
 ## Features to Add (Future Enhancements)
 
+- ✅ Tradovate API integration (completed)
+- Automatic daily sync scheduler for Tradovate
 - User authentication and multi-user support
 - Image/screenshot upload for trades
 - CSV import/export functionality
@@ -142,6 +211,7 @@ tradingapp/
 - Performance comparison with benchmarks
 - Mobile responsive improvements
 - Dark mode
+- Support for other brokers (Interactive Brokers, TD Ameritrade, etc.)
 
 ## Contributing
 
