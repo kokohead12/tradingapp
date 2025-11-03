@@ -3,7 +3,7 @@ const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
 const fs = require('fs');
 const path = require('path');
-const TradovateAPI = require('./tradovate');
+const multer = require('multer');
 require('dotenv').config();
 
 const app = express();
@@ -341,212 +341,168 @@ app.post('/api/tags', (req, res) => {
   );
 });
 
-// ==================== TRADOVATE ROUTES ====================
+// ==================== CSV IMPORT ROUTES ====================
 
-// Get Tradovate settings
-app.get('/api/tradovate/settings', (req, res) => {
-  db.get('SELECT id, username, environment, auto_sync_enabled, last_sync_date FROM tradovate_settings LIMIT 1', [], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json(row || { configured: false });
-  });
+// Configure multer for file uploads
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 } // 5MB limit
 });
 
-// Save Tradovate credentials
-app.post('/api/tradovate/settings', (req, res) => {
-  const { username, password, environment, auto_sync_enabled } = req.body;
-
-  if (!username || !password) {
-    res.status(400).json({ error: 'Username and password are required' });
-    return;
-  }
-
-  // Check if settings exist
-  db.get('SELECT id FROM tradovate_settings LIMIT 1', [], (err, row) => {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    const query = row
-      ? `UPDATE tradovate_settings SET username = ?, password = ?, environment = ?, auto_sync_enabled = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`
-      : `INSERT INTO tradovate_settings (username, password, environment, auto_sync_enabled) VALUES (?, ?, ?, ?)`;
-
-    const params = row
-      ? [username, password, environment || 'demo', auto_sync_enabled ? 1 : 0, row.id]
-      : [username, password, environment || 'demo', auto_sync_enabled ? 1 : 0];
-
-    db.run(query, params, function(err) {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-      res.json({ message: 'Tradovate settings saved successfully' });
-    });
-  });
-});
-
-// Test Tradovate connection
-app.post('/api/tradovate/test', async (req, res) => {
-  const { username, password, environment } = req.body;
-
-  if (!username || !password) {
-    res.status(400).json({ error: 'Username and password are required' });
-    return;
-  }
-
+// CSV Import endpoint
+app.post('/api/import/csv', upload.single('file'), async (req, res) => {
   try {
-    const api = new TradovateAPI(environment || 'demo');
-    const authResult = await api.authenticate(username, password);
+    if (!req.file) {
+      res.status(400).json({ error: 'No file uploaded' });
+      return;
+    }
 
-    // Get account to verify full access
-    const accounts = await api.getAccount(authResult.accessToken);
+    const csvContent = req.file.buffer.toString('utf-8');
+    const lines = csvContent.split('\n').filter(line => line.trim());
+
+    if (lines.length < 2) {
+      res.status(400).json({ error: 'CSV file is empty or invalid' });
+      return;
+    }
+
+    // Parse header
+    const header = lines[0].split(',').map(h => h.trim().toLowerCase());
+
+    // Required fields
+    const requiredFields = ['symbol', 'type', 'entry_date', 'entry_price', 'quantity'];
+    const missingFields = requiredFields.filter(f => !header.includes(f));
+
+    if (missingFields.length > 0) {
+      res.status(400).json({
+        error: `Missing required columns: ${missingFields.join(', ')}`,
+        hint: 'Required columns: symbol, type, entry_date, entry_price, quantity'
+      });
+      return;
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    let errors = [];
+
+    // Parse and import trades
+    for (let i = 1; i < lines.length; i++) {
+      try {
+        const values = lines[i].split(',').map(v => v.trim());
+        const trade = {};
+
+        // Map values to trade object
+        header.forEach((col, idx) => {
+          trade[col] = values[idx];
+        });
+
+        // Validate required fields
+        if (!trade.symbol || !trade.type || !trade.entry_date || !trade.entry_price || !trade.quantity) {
+          errors.push({ line: i + 1, error: 'Missing required field(s)' });
+          continue;
+        }
+
+        // Create unique ID for duplicate detection
+        const externalId = `csv_${trade.symbol}_${trade.entry_date}_${trade.entry_price}_${trade.quantity}`;
+
+        // Check for duplicates
+        const existing = await new Promise((resolve) => {
+          db.get(
+            'SELECT id FROM imported_trades WHERE external_id = ?',
+            [externalId],
+            (err, row) => resolve(row)
+          );
+        });
+
+        if (existing) {
+          skipped++;
+          continue;
+        }
+
+        // Calculate P&L if exit data exists
+        let profitLoss = null;
+        let profitLossPercent = null;
+        let status = 'OPEN';
+
+        if (trade.exit_price && parseFloat(trade.exit_price) > 0) {
+          const entryPrice = parseFloat(trade.entry_price);
+          const exitPrice = parseFloat(trade.exit_price);
+          const quantity = parseInt(trade.quantity);
+          const fees = trade.fees ? parseFloat(trade.fees) : 0;
+          const tradeType = trade.type.toUpperCase();
+
+          const totalEntry = entryPrice * quantity;
+          const totalExit = exitPrice * quantity;
+
+          profitLoss = tradeType === 'LONG'
+            ? (totalExit - totalEntry - fees)
+            : (totalEntry - totalExit - fees);
+
+          profitLossPercent = (profitLoss / totalEntry) * 100;
+          status = 'CLOSED';
+        }
+
+        // Insert trade
+        const tradeId = await new Promise((resolve, reject) => {
+          db.run(
+            `INSERT INTO trades (
+              symbol, trade_type, entry_date, exit_date, entry_price, exit_price,
+              quantity, stop_loss, take_profit, profit_loss, profit_loss_percent,
+              fees, status, strategy, notes
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+              trade.symbol,
+              trade.type.toUpperCase(),
+              trade.entry_date,
+              trade.exit_date || null,
+              parseFloat(trade.entry_price),
+              trade.exit_price ? parseFloat(trade.exit_price) : null,
+              parseInt(trade.quantity),
+              trade.stop_loss ? parseFloat(trade.stop_loss) : null,
+              trade.take_profit ? parseFloat(trade.take_profit) : null,
+              profitLoss,
+              profitLossPercent,
+              trade.fees ? parseFloat(trade.fees) : 0,
+              status,
+              trade.strategy || null,
+              trade.notes || null
+            ],
+            function(err) {
+              if (err) reject(err);
+              else resolve(this.lastID);
+            }
+          );
+        });
+
+        // Track as imported
+        await new Promise((resolve, reject) => {
+          db.run(
+            'INSERT INTO imported_trades (external_id, source, trade_id) VALUES (?, ?, ?)',
+            [externalId, 'csv', tradeId],
+            (err) => {
+              if (err) reject(err);
+              else resolve();
+            }
+          );
+        });
+
+        imported++;
+      } catch (error) {
+        errors.push({ line: i + 1, error: error.message });
+      }
+    }
 
     res.json({
       success: true,
-      message: 'Connection successful',
-      accounts: accounts.length,
-      userId: authResult.userId
+      message: 'CSV import completed',
+      imported,
+      skipped,
+      total: lines.length - 1,
+      errors: errors.length > 0 ? errors : undefined
     });
-  } catch (error) {
-    res.status(401).json({ success: false, error: error.message });
-  }
-});
 
-// Manual sync trades from Tradovate
-app.post('/api/tradovate/sync', async (req, res) => {
-  try {
-    // Get stored credentials
-    db.get('SELECT * FROM tradovate_settings LIMIT 1', [], async (err, settings) => {
-      if (err) {
-        res.status(500).json({ error: err.message });
-        return;
-      }
-
-      if (!settings) {
-        res.status(400).json({ error: 'Tradovate not configured. Please add your credentials first.' });
-        return;
-      }
-
-      try {
-        const api = new TradovateAPI(settings.environment);
-
-        // Authenticate
-        const authResult = await api.authenticate(settings.username, settings.password);
-
-        // Update access token in database
-        db.run(
-          'UPDATE tradovate_settings SET access_token = ?, token_expiry = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
-          [authResult.accessToken, authResult.expirationTime, settings.id]
-        );
-
-        // Get accounts
-        const accounts = await api.getAccount(authResult.accessToken);
-
-        if (accounts.length === 0) {
-          res.status(400).json({ error: 'No accounts found' });
-          return;
-        }
-
-        const accountId = accounts[0].id;
-
-        // Get fills
-        const fills = await api.getFills(accountId, authResult.accessToken);
-
-        if (!fills || fills.length === 0) {
-          // Update last sync date even if no trades
-          db.run(
-            'UPDATE tradovate_settings SET last_sync_date = CURRENT_TIMESTAMP WHERE id = ?',
-            [settings.id]
-          );
-          res.json({ message: 'No new trades to import', imported: 0, skipped: 0 });
-          return;
-        }
-
-        // Convert fills to trades
-        const trades = await api.convertFillsToTrades(fills, accountId, authResult.accessToken);
-
-        let imported = 0;
-        let skipped = 0;
-
-        // Import each trade
-        for (const trade of trades) {
-          // Check if already imported
-          const existing = await new Promise((resolve) => {
-            db.get(
-              'SELECT id FROM imported_trades WHERE external_id = ?',
-              [trade.external_id],
-              (err, row) => resolve(row)
-            );
-          });
-
-          if (existing) {
-            skipped++;
-            continue;
-          }
-
-          // Insert trade
-          const tradeId = await new Promise((resolve, reject) => {
-            db.run(
-              `INSERT INTO trades (symbol, trade_type, entry_date, entry_price, quantity, fees, status, notes)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-              [trade.symbol, trade.trade_type, trade.entry_date, trade.entry_price, trade.quantity, trade.fees, trade.status, trade.notes],
-              function(err) {
-                if (err) reject(err);
-                else resolve(this.lastID);
-              }
-            );
-          });
-
-          // Track as imported
-          await new Promise((resolve, reject) => {
-            db.run(
-              'INSERT INTO imported_trades (external_id, source, trade_id) VALUES (?, ?, ?)',
-              [trade.external_id, 'tradovate', tradeId],
-              (err) => {
-                if (err) reject(err);
-                else resolve();
-              }
-            );
-          });
-
-          imported++;
-        }
-
-        // Update last sync date
-        db.run(
-          'UPDATE tradovate_settings SET last_sync_date = CURRENT_TIMESTAMP WHERE id = ?',
-          [settings.id]
-        );
-
-        res.json({
-          success: true,
-          message: `Sync completed`,
-          imported,
-          skipped,
-          total: trades.length
-        });
-
-      } catch (error) {
-        res.status(500).json({ error: error.message });
-      }
-    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
-});
-
-// Delete Tradovate settings
-app.delete('/api/tradovate/settings', (req, res) => {
-  db.run('DELETE FROM tradovate_settings', [], function(err) {
-    if (err) {
-      res.status(500).json({ error: err.message });
-      return;
-    }
-    res.json({ message: 'Tradovate settings deleted successfully' });
-  });
 });
 
 // Health check

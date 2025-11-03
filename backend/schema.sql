@@ -41,25 +41,11 @@ CREATE INDEX IF NOT EXISTS idx_trades_symbol ON trades(symbol);
 CREATE INDEX IF NOT EXISTS idx_trades_entry_date ON trades(entry_date);
 CREATE INDEX IF NOT EXISTS idx_trades_status ON trades(status);
 
--- Tradovate Integration Settings
-CREATE TABLE IF NOT EXISTS tradovate_settings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT NOT NULL,
-    password TEXT NOT NULL,
-    environment VARCHAR(10) DEFAULT 'demo' CHECK(environment IN ('demo', 'live')),
-    auto_sync_enabled BOOLEAN DEFAULT 0,
-    last_sync_date DATETIME,
-    access_token TEXT,
-    token_expiry DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
 -- Track imported trades to avoid duplicates
 CREATE TABLE IF NOT EXISTS imported_trades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     external_id TEXT UNIQUE NOT NULL,
-    source VARCHAR(20) DEFAULT 'tradovate',
+    source VARCHAR(20) DEFAULT 'csv',
     trade_id INTEGER,
     imported_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (trade_id) REFERENCES trades(id) ON DELETE SET NULL

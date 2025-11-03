@@ -239,13 +239,13 @@ function HomePage() {
           <div className="p-12 text-center">
             <div className="text-6xl mb-4">📝</div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No trades yet</h3>
-            <p className="text-gray-500 mb-6">Start by adding your first trade or sync from Tradovate</p>
+            <p className="text-gray-500 mb-6">Start by adding your first trade or import from CSV</p>
             <div className="flex gap-3 justify-center">
               <a href="/add-trade" className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">
                 + Add Trade
               </a>
-              <a href="/tradovate" className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">
-                Sync from Tradovate
+              <a href="/import" className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium">
+                📥 Import CSV
               </a>
             </div>
           </div>

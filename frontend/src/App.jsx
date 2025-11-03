@@ -3,7 +3,7 @@ import HomePage from './pages/HomePage'
 import TradesPage from './pages/TradesPage'
 import AddTradePage from './pages/AddTradePage'
 import StatsPage from './pages/StatsPage'
-import TradovateSettingsPage from './pages/TradovateSettingsPage'
+import ImportPage from './pages/ImportPage'
 
 function App() {
   return (
@@ -37,10 +37,10 @@ function App() {
                     Statistics
                   </Link>
                   <Link
-                    to="/tradovate"
+                    to="/import"
                     className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
                   >
-                    Tradovate
+                    Import
                   </Link>
                 </div>
               </div>
@@ -61,7 +61,7 @@ function App() {
             <Route path="/trades" element={<TradesPage />} />
             <Route path="/add-trade" element={<AddTradePage />} />
             <Route path="/stats" element={<StatsPage />} />
-            <Route path="/tradovate" element={<TradovateSettingsPage />} />
+            <Route path="/import" element={<ImportPage />} />
           </Routes>
         </main>
       </div>
