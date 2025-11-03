@@ -4,6 +4,7 @@ import TradesPage from './pages/TradesPage'
 import AddTradePage from './pages/AddTradePage'
 import StatsPage from './pages/StatsPage'
 import ImportPage from './pages/ImportPage'
+import AnalyticsPage from './pages/AnalyticsPage'
 
 function App() {
   return (
@@ -37,6 +38,12 @@ function App() {
                     Statistics
                   </Link>
                   <Link
+                    to="/analytics"
+                    className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
+                  >
+                    Analytics
+                  </Link>
+                  <Link
                     to="/import"
                     className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
                   >
@@ -61,6 +68,7 @@ function App() {
             <Route path="/trades" element={<TradesPage />} />
             <Route path="/add-trade" element={<AddTradePage />} />
             <Route path="/stats" element={<StatsPage />} />
+            <Route path="/analytics" element={<AnalyticsPage />} />
             <Route path="/import" element={<ImportPage />} />
           </Routes>
         </main>
