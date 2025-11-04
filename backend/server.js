@@ -143,16 +143,15 @@ app.post('/api/trades', async (req, res) => {
     screenshot_url
   } = req.body;
 
-  // Calculate P&L if exit price is provided
+  // Calculate P&L - all trades are closed (futures trading)
   let profit_loss = null;
   let profit_loss_percent = null;
-  let status = 'OPEN';
+  const status = 'CLOSED'; // All trades are closed trades
 
   if (exit_price) {
     const plResult = calculateProfitLoss(symbol, trade_type, entry_price, exit_price, quantity, fees || 0);
     profit_loss = plResult.profit_loss;
     profit_loss_percent = plResult.profit_loss_percent;
-    status = 'CLOSED';
   }
 
   const query = `
@@ -194,16 +193,15 @@ app.put('/api/trades/:id', async (req, res) => {
     screenshot_url
   } = req.body;
 
-  // Calculate P&L if exit price is provided
+  // Calculate P&L - all trades are closed (futures trading)
   let profit_loss = null;
   let profit_loss_percent = null;
-  let status = 'OPEN';
+  const status = 'CLOSED'; // All trades are closed trades
 
   if (exit_price) {
     const plResult = calculateProfitLoss(symbol, trade_type, entry_price, exit_price, quantity, fees || 0);
     profit_loss = plResult.profit_loss;
     profit_loss_percent = plResult.profit_loss_percent;
-    status = 'CLOSED';
   }
 
   const query = `
@@ -255,8 +253,8 @@ app.get('/api/stats', async (req, res) => {
     const overallQuery = `
       SELECT
         COUNT(*) as total_trades,
-        SUM(CASE WHEN status = 'CLOSED' THEN 1 ELSE 0 END) as closed_trades,
-        SUM(CASE WHEN status = 'OPEN' THEN 1 ELSE 0 END) as open_trades,
+        COUNT(*) as closed_trades,
+        0 as open_trades,
         SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as winning_trades,
         SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losing_trades,
         SUM(profit_loss) as total_profit_loss,
@@ -265,14 +263,14 @@ app.get('/api/stats', async (req, res) => {
         MIN(profit_loss) as worst_trade,
         AVG(profit_loss_percent) as avg_return_percent
       FROM trades
-      WHERE status = 'CLOSED'
+      WHERE profit_loss IS NOT NULL
     `;
 
     const overallResult = await pool.query(overallQuery);
     const row = overallResult.rows[0];
 
-    const winRate = row.closed_trades > 0
-      ? (row.winning_trades / row.closed_trades) * 100
+    const winRate = row.total_trades > 0
+      ? (row.winning_trades / row.total_trades) * 100
       : 0;
 
     const stats = {
@@ -292,7 +290,7 @@ app.get('/api/stats', async (req, res) => {
         SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
         COUNT(*) as total
       FROM trades
-      WHERE status = 'CLOSED'
+      WHERE profit_loss IS NOT NULL
       GROUP BY symbol
       ORDER BY total_pl DESC
     `;
@@ -319,7 +317,7 @@ app.get('/api/stats/monthly', async (req, res) => {
       SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
       COUNT(*) as total
     FROM trades
-    WHERE status = 'CLOSED'
+    WHERE profit_loss IS NOT NULL
     GROUP BY TO_CHAR(entry_date, 'YYYY-MM')
     ORDER BY month DESC
   `;
@@ -348,7 +346,7 @@ app.get('/api/analytics/daily', async (req, res) => {
       SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
       SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END) as losses
     FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+    WHERE profit_loss IS NOT NULL
     GROUP BY entry_date::date
     ORDER BY date DESC
   `;
@@ -370,7 +368,7 @@ app.get('/api/analytics/equity-curve', async (req, res) => {
       symbol,
       profit_loss
     FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+    WHERE profit_loss IS NOT NULL
     ORDER BY entry_date ASC
   `;
 
@@ -408,7 +406,7 @@ app.get('/api/analytics/time', async (req, res) => {
         SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
         COUNT(*) as total
       FROM trades
-      WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+      WHERE profit_loss IS NOT NULL
       GROUP BY EXTRACT(HOUR FROM entry_date)
       ORDER BY hour ASC
     `;
@@ -423,7 +421,7 @@ app.get('/api/analytics/time', async (req, res) => {
         SUM(CASE WHEN profit_loss > 0 THEN 1 ELSE 0 END) as wins,
         COUNT(*) as total
       FROM trades
-      WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+      WHERE profit_loss IS NOT NULL
       GROUP BY EXTRACT(DOW FROM entry_date)
       ORDER BY day_of_week ASC
     `;
@@ -468,7 +466,7 @@ app.get('/api/analytics/strategies', async (req, res) => {
       MAX(profit_loss) as best_trade,
       MIN(profit_loss) as worst_trade
     FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+    WHERE profit_loss IS NOT NULL
     GROUP BY strategy
     ORDER BY total_pl DESC
   `;
@@ -500,7 +498,7 @@ app.get('/api/analytics/advanced-metrics', async (req, res) => {
       SUM(CASE WHEN profit_loss < 0 THEN ABS(profit_loss) ELSE 0 END) / NULLIF(SUM(CASE WHEN profit_loss < 0 THEN 1 ELSE 0 END), 0) as avg_loss,
       SUM(profit_loss) as net_profit
     FROM trades
-    WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+    WHERE profit_loss IS NOT NULL
   `;
 
   try {
@@ -516,7 +514,7 @@ app.get('/api/analytics/advanced-metrics', async (req, res) => {
     const equityQuery = `
       SELECT profit_loss
       FROM trades
-      WHERE status = 'CLOSED' AND profit_loss IS NOT NULL
+      WHERE profit_loss IS NOT NULL
       ORDER BY entry_date ASC
     `;
 
@@ -565,8 +563,7 @@ app.get('/api/analytics/hold-time', async (req, res) => {
       EXTRACT(EPOCH FROM (exit_date - entry_date)) / 86400 as hold_days,
       EXTRACT(EPOCH FROM (exit_date - entry_date)) / 3600 as hold_hours
     FROM trades
-    WHERE status = 'CLOSED'
-      AND exit_date IS NOT NULL
+    WHERE exit_date IS NOT NULL
       AND profit_loss IS NOT NULL
     ORDER BY entry_date ASC
   `;
@@ -731,7 +728,7 @@ app.post('/api/import/csv', upload.single('file'), async (req, res) => {
         // Calculate P&L if exit data exists
         let profitLoss = null;
         let profitLossPercent = null;
-        let status = 'OPEN';
+        const status = 'CLOSED'; // All trades are closed
 
         if (trade.exit_price && parseFloat(trade.exit_price) > 0) {
           const entryPrice = parseFloat(trade.entry_price);
@@ -743,7 +740,6 @@ app.post('/api/import/csv', upload.single('file'), async (req, res) => {
           const plResult = calculateProfitLoss(trade.symbol, tradeType, entryPrice, exitPrice, quantity, fees);
           profitLoss = plResult.profit_loss;
           profitLossPercent = plResult.profit_loss_percent;
-          status = 'CLOSED';
         }
 
         // Insert trade
