@@ -44,6 +44,50 @@ async function initializeDatabase() {
   }
 }
 
+// Helper function to get point value/multiplier for futures contracts
+function getPointValue(symbol) {
+  const upperSymbol = symbol.toUpperCase();
+
+  // Nasdaq futures (NQ, MNQ)
+  if (upperSymbol.includes('NQ') || upperSymbol === 'NQ' || upperSymbol === 'MNQ') {
+    return 20; // $20 per point
+  }
+
+  // ES (S&P 500 futures)
+  if (upperSymbol.includes('ES') || upperSymbol === 'ES' || upperSymbol === 'MES') {
+    return 50; // $50 per point
+  }
+
+  // YM (Dow futures)
+  if (upperSymbol.includes('YM') || upperSymbol === 'YM' || upperSymbol === 'MYM') {
+    return 5; // $5 per point
+  }
+
+  // RTY (Russell 2000 futures)
+  if (upperSymbol.includes('RTY') || upperSymbol === 'RTY' || upperSymbol === 'M2K') {
+    return 50; // $50 per point
+  }
+
+  // Default to 1 for stocks (no multiplier)
+  return 1;
+}
+
+// Calculate P&L with futures support
+function calculateProfitLoss(symbol, trade_type, entry_price, exit_price, quantity, fees = 0) {
+  const pointValue = getPointValue(symbol);
+  const pointDifference = trade_type === 'LONG'
+    ? (exit_price - entry_price)
+    : (entry_price - exit_price);
+
+  const profit_loss = (pointDifference * quantity * pointValue) - fees;
+
+  // For percentage calculation, use the notional entry value
+  const total_entry = entry_price * quantity * pointValue;
+  const profit_loss_percent = (profit_loss / total_entry) * 100;
+
+  return { profit_loss, profit_loss_percent };
+}
+
 // ==================== TRADE ROUTES ====================
 
 // Get all trades
@@ -105,12 +149,9 @@ app.post('/api/trades', async (req, res) => {
   let status = 'OPEN';
 
   if (exit_price) {
-    const total_entry = entry_price * quantity;
-    const total_exit = exit_price * quantity;
-    profit_loss = trade_type === 'LONG'
-      ? (total_exit - total_entry - (fees || 0))
-      : (total_entry - total_exit - (fees || 0));
-    profit_loss_percent = (profit_loss / total_entry) * 100;
+    const plResult = calculateProfitLoss(symbol, trade_type, entry_price, exit_price, quantity, fees || 0);
+    profit_loss = plResult.profit_loss;
+    profit_loss_percent = plResult.profit_loss_percent;
     status = 'CLOSED';
   }
 
@@ -159,12 +200,9 @@ app.put('/api/trades/:id', async (req, res) => {
   let status = 'OPEN';
 
   if (exit_price) {
-    const total_entry = entry_price * quantity;
-    const total_exit = exit_price * quantity;
-    profit_loss = trade_type === 'LONG'
-      ? (total_exit - total_entry - (fees || 0))
-      : (total_entry - total_exit - (fees || 0));
-    profit_loss_percent = (profit_loss / total_entry) * 100;
+    const plResult = calculateProfitLoss(symbol, trade_type, entry_price, exit_price, quantity, fees || 0);
+    profit_loss = plResult.profit_loss;
+    profit_loss_percent = plResult.profit_loss_percent;
     status = 'CLOSED';
   }
 
@@ -702,14 +740,9 @@ app.post('/api/import/csv', upload.single('file'), async (req, res) => {
           const fees = trade.fees ? parseFloat(trade.fees) : 0;
           const tradeType = trade.type.toUpperCase();
 
-          const totalEntry = entryPrice * quantity;
-          const totalExit = exitPrice * quantity;
-
-          profitLoss = tradeType === 'LONG'
-            ? (totalExit - totalEntry - fees)
-            : (totalEntry - totalExit - fees);
-
-          profitLossPercent = (profitLoss / totalEntry) * 100;
+          const plResult = calculateProfitLoss(trade.symbol, tradeType, entryPrice, exitPrice, quantity, fees);
+          profitLoss = plResult.profit_loss;
+          profitLossPercent = plResult.profit_loss_percent;
           status = 'CLOSED';
         }
 
