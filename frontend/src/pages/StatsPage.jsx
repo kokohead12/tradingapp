@@ -50,18 +50,18 @@ function StatsPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total P&L"
-          value={`$${stats?.overall?.total_profit_loss?.toFixed(2) || '0.00'}`}
-          className={stats?.overall?.total_profit_loss >= 0 ? 'text-green-600' : 'text-red-600'}
+          value={`$${parseFloat(stats?.overall?.total_profit_loss || 0).toFixed(2)}`}
+          className={parseFloat(stats?.overall?.total_profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}
         />
         <StatCard
           title="Win Rate"
-          value={`${stats?.overall?.win_rate || 0}%`}
+          value={`${parseFloat(stats?.overall?.win_rate || 0).toFixed(1)}%`}
           className="text-blue-600"
         />
         <StatCard
           title="Avg P&L"
-          value={`$${stats?.overall?.avg_profit_loss?.toFixed(2) || '0.00'}`}
-          className={stats?.overall?.avg_profit_loss >= 0 ? 'text-green-600' : 'text-red-600'}
+          value={`$${parseFloat(stats?.overall?.avg_profit_loss || 0).toFixed(2)}`}
+          className={parseFloat(stats?.overall?.avg_profit_loss || 0) >= 0 ? 'text-green-600' : 'text-red-600'}
         />
         <StatCard
           title="Total Trades"
@@ -147,13 +147,13 @@ function StatsPage() {
                       {symbol.trades_count}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {symbol.win_rate}%
+                      {parseFloat(symbol.win_rate || 0).toFixed(1)}%
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${symbol.total_pl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${symbol.total_pl.toFixed(2)}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${parseFloat(symbol.total_pl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${parseFloat(symbol.total_pl || 0).toFixed(2)}
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${symbol.avg_pl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${symbol.avg_pl.toFixed(2)}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(symbol.avg_pl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${parseFloat(symbol.avg_pl || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}
@@ -197,10 +197,10 @@ function StatsPage() {
                       {month.trades_count}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {month.win_rate}%
+                      {parseFloat(month.win_rate || 0).toFixed(1)}%
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${month.total_pl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${month.total_pl?.toFixed(2)}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${parseFloat(month.total_pl || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${parseFloat(month.total_pl || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}
