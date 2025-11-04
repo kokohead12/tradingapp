@@ -41,9 +41,9 @@ function HomePage() {
     )
   }
 
-  const totalPL = stats?.total_profit_loss || 0
+  const totalPL = parseFloat(stats?.total_profit_loss || 0)
   const winRate = parseFloat(stats?.win_rate || 0)
-  const avgReturn = stats?.avg_return_percent || 0
+  const avgReturn = parseFloat(stats?.avg_return_percent || 0)
 
   return (
     <div className="space-y-6">
@@ -118,25 +118,25 @@ function HomePage() {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
           label="Best Trade"
-          value={`$${stats?.best_trade?.toFixed(2) || '0.00'}`}
+          value={`$${parseFloat(stats?.best_trade || 0).toFixed(2)}`}
           positive={true}
           icon="🏆"
         />
         <MetricCard
           label="Worst Trade"
-          value={`$${stats?.worst_trade?.toFixed(2) || '0.00'}`}
+          value={`$${parseFloat(stats?.worst_trade || 0).toFixed(2)}`}
           positive={false}
           icon="💔"
         />
         <MetricCard
           label="Avg Win"
-          value={`$${((stats?.total_profit_loss || 0) / (stats?.winning_trades || 1)).toFixed(2)}`}
+          value={`$${(parseFloat(stats?.total_profit_loss || 0) / parseFloat(stats?.winning_trades || 1)).toFixed(2)}`}
           positive={true}
           icon="✅"
         />
         <MetricCard
           label="Avg Loss"
-          value={`$${Math.abs(((stats?.total_profit_loss || 0) - ((stats?.total_profit_loss || 0) / (stats?.winning_trades || 1)) * (stats?.winning_trades || 0)) / (stats?.losing_trades || 1)).toFixed(2)}`}
+          value={`$${Math.abs((parseFloat(stats?.total_profit_loss || 0) - (parseFloat(stats?.total_profit_loss || 0) / parseFloat(stats?.winning_trades || 1)) * parseFloat(stats?.winning_trades || 0)) / parseFloat(stats?.losing_trades || 1)).toFixed(2)}`}
           positive={false}
           icon="❌"
         />
@@ -296,10 +296,10 @@ function HomePage() {
                       {new Date(trade.entry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      ${trade.entry_price?.toFixed(2)}
+                      ${parseFloat(trade.entry_price || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-medium">
-                      {trade.exit_price ? `$${trade.exit_price.toFixed(2)}` : '-'}
+                      {trade.exit_price ? `$${parseFloat(trade.exit_price).toFixed(2)}` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
                       {trade.quantity}
@@ -308,14 +308,14 @@ function HomePage() {
                       {trade.profit_loss ? (
                         <div className="flex flex-col">
                           <span className={`text-sm font-bold ${
-                            trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600'
+                            parseFloat(trade.profit_loss) >= 0 ? 'text-green-600' : 'text-red-600'
                           }`}>
-                            ${trade.profit_loss.toFixed(2)}
+                            ${parseFloat(trade.profit_loss).toFixed(2)}
                           </span>
                           <span className={`text-xs ${
-                            trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'
+                            parseFloat(trade.profit_loss) >= 0 ? 'text-green-500' : 'text-red-500'
                           }`}>
-                            {trade.profit_loss_percent?.toFixed(2)}%
+                            {parseFloat(trade.profit_loss_percent || 0).toFixed(2)}%
                           </span>
                         </div>
                       ) : (
