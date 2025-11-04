@@ -31,6 +31,15 @@ A full-stack trading journal application inspired by Tradezella, built to help t
 - Node.js (v16 or higher)
 - npm or yarn
 
+### About this workspace
+
+The development environment that produced these changes starts from a clean
+checkout of the repository without any Git remotes configured. Nothing is
+pushed anywhere automatically—you remain in full control of when and where the
+code is uploaded. If you want to push the current branch to your own Git
+service, add your remote and run `git push` as described in
+[`PUSHING.md`](PUSHING.md).
+
 ### Setup
 
 1. **Clone the repository**

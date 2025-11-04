@@ -18,7 +18,7 @@ function TradesPage() {
     try {
       const res = await fetch('/api/trades')
       const data = await res.json()
-      setTrades(data)
+      setTrades(Array.isArray(data) ? data : [])
       setLoading(false)
     } catch (error) {
       console.error('Error fetching trades:', error)
@@ -130,10 +130,10 @@ function TradesPage() {
                       {new Date(trade.entry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${trade.entry_price.toFixed(2)}
+                      {formatCurrency(trade.entry_price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {trade.exit_price ? `$${trade.exit_price.toFixed(2)}` : '-'}
+                      {formatCurrency(trade.exit_price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {trade.quantity}
@@ -143,8 +143,12 @@ function TradesPage() {
                         {trade.status}
                       </span>
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${trade.profit_loss ? (trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
-                      {trade.profit_loss ? `$${trade.profit_loss.toFixed(2)} (${trade.profit_loss_percent.toFixed(2)}%)` : '-'}
+                    <td
+                      className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getProfitLossClass(
+                        trade.profit_loss
+                      )}`}
+                    >
+                      {formatProfitLoss(trade.profit_loss, trade.profit_loss_percent)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button
@@ -178,6 +182,56 @@ function FilterButton({ label, active, onClick }) {
       {label}
     </button>
   )
+}
+
+const numberFromValue = (value) => {
+  if (value === null || value === undefined) return null
+
+  const parsed = typeof value === 'number' ? value : Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
+
+const percentFormatter = new Intl.NumberFormat('en-US', {
+  style: 'percent',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2
+})
+
+const formatCurrency = (value) => {
+  const numeric = numberFromValue(value)
+  return numeric === null ? '-' : currencyFormatter.format(numeric)
+}
+
+const formatPercent = (value) => {
+  const numeric = numberFromValue(value)
+  return numeric === null ? '-' : percentFormatter.format(numeric / 100)
+}
+
+const getProfitLossClass = (profitLoss) => {
+  const numeric = numberFromValue(profitLoss)
+
+  if (numeric === null) {
+    return 'text-gray-500'
+  }
+
+  return numeric >= 0 ? 'text-green-600' : 'text-red-600'
+}
+
+const formatProfitLoss = (profitLoss, profitLossPercent) => {
+  const numeric = numberFromValue(profitLoss)
+  if (numeric === null) {
+    return '-'
+  }
+
+  const percentDisplay = formatPercent(profitLossPercent)
+  return percentDisplay !== '-' ? `${formatCurrency(numeric)} (${percentDisplay})` : formatCurrency(numeric)
 }
 
 export default TradesPage
