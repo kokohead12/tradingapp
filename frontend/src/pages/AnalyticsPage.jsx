@@ -134,10 +134,10 @@ function AnalyticsPage() {
                       <div className="bg-white p-3 border border-gray-200 rounded-lg shadow-lg">
                         <p className="text-sm font-semibold">{payload[0].payload.date}</p>
                         <p className="text-sm text-green-600 font-medium">
-                          Cumulative: ${payload[0].value.toFixed(2)}
+                          Cumulative: ${parseFloat(payload[0].value || 0).toFixed(2)}
                         </p>
                         <p className="text-sm text-gray-600">
-                          Trade: ${payload[0].payload.trade_pl.toFixed(2)}
+                          Trade: ${parseFloat(payload[0].payload.trade_pl || 0).toFixed(2)}
                         </p>
                         <p className="text-xs text-gray-500">{payload[0].payload.symbol}</p>
                       </div>
@@ -162,7 +162,7 @@ function AnalyticsPage() {
         {dailyData.length > 0 ? (
           <div className="grid grid-cols-7 gap-2">
             {dailyData.slice(0, 35).reverse().map((day, idx) => {
-              const pl = day.daily_pl || 0
+              const pl = parseFloat(day.daily_pl || 0)
               const intensity = Math.min(Math.abs(pl) / 500, 1) // Normalize to 0-1
               const bgColor = pl > 0
                 ? `rgba(16, 185, 129, ${0.2 + intensity * 0.8})`
@@ -206,7 +206,7 @@ function AnalyticsPage() {
                 <XAxis dataKey="hour_label" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
-                  formatter={(value) => [`$${value.toFixed(2)}`, 'P&L']}
+                  formatter={(value) => [`$${parseFloat(value || 0).toFixed(2)}`, 'P&L']}
                   contentStyle={{ borderRadius: '8px' }}
                 />
                 <Bar dataKey="total_pl" fill="#3B82F6" radius={[4, 4, 0, 0]} />
@@ -229,7 +229,7 @@ function AnalyticsPage() {
                 <XAxis dataKey="day_name" tick={{ fontSize: 11 }} />
                 <YAxis tick={{ fontSize: 11 }} />
                 <Tooltip
-                  formatter={(value) => [`$${value.toFixed(2)}`, 'P&L']}
+                  formatter={(value) => [`$${parseFloat(value || 0).toFixed(2)}`, 'P&L']}
                   contentStyle={{ borderRadius: '8px' }}
                 />
                 <Bar dataKey="total_pl" fill="#8B5CF6" radius={[4, 4, 0, 0]} />
@@ -270,21 +270,21 @@ function AnalyticsPage() {
                       {strategy.trades_count}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                      <span className={`${parseFloat(strategy.win_rate) > 50 ? 'text-green-600' : 'text-red-600'}`}>
-                        {strategy.win_rate}%
+                      <span className={`${parseFloat(strategy.win_rate || 0) > 50 ? 'text-green-600' : 'text-red-600'}`}>
+                        {parseFloat(strategy.win_rate || 0).toFixed(1)}%
                       </span>
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold ${strategy.total_pl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${strategy.total_pl.toFixed(2)}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-bold ${parseFloat(strategy.total_pl || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${parseFloat(strategy.total_pl || 0).toFixed(2)}
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${strategy.avg_pl > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      ${strategy.avg_pl.toFixed(2)}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm ${parseFloat(strategy.avg_pl || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      ${parseFloat(strategy.avg_pl || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-medium">
-                      ${strategy.best_trade.toFixed(2)}
+                      ${parseFloat(strategy.best_trade || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
-                      ${strategy.worst_trade.toFixed(2)}
+                      ${parseFloat(strategy.worst_trade || 0).toFixed(2)}
                     </td>
                   </tr>
                 ))}

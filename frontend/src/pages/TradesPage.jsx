@@ -130,10 +130,10 @@ function TradesPage() {
                       {new Date(trade.entry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${trade.entry_price.toFixed(2)}
+                      ${parseFloat(trade.entry_price || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {trade.exit_price ? `$${trade.exit_price.toFixed(2)}` : '-'}
+                      {trade.exit_price ? `$${parseFloat(trade.exit_price).toFixed(2)}` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {trade.quantity}
@@ -143,8 +143,8 @@ function TradesPage() {
                         {trade.status}
                       </span>
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${trade.profit_loss ? (trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
-                      {trade.profit_loss ? `$${trade.profit_loss.toFixed(2)} (${trade.profit_loss_percent.toFixed(2)}%)` : '-'}
+                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${trade.profit_loss ? (parseFloat(trade.profit_loss) >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
+                      {trade.profit_loss ? `$${parseFloat(trade.profit_loss).toFixed(2)} (${parseFloat(trade.profit_loss_percent || 0).toFixed(2)}%)` : '-'}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button
