@@ -18,7 +18,15 @@ function TradesPage() {
     try {
       const res = await fetch('/api/trades')
       const data = await res.json()
-      setTrades(data)
+      const normalized = data.map(trade => ({
+        ...trade,
+        entry_price: trade.entry_price != null ? Number(trade.entry_price) : null,
+        exit_price: trade.exit_price != null ? Number(trade.exit_price) : null,
+        profit_loss: trade.profit_loss != null ? Number(trade.profit_loss) : null,
+        profit_loss_percent:
+          trade.profit_loss_percent != null ? Number(trade.profit_loss_percent) : null
+      }))
+      setTrades(normalized)
       setLoading(false)
     } catch (error) {
       console.error('Error fetching trades:', error)
@@ -130,10 +138,10 @@ function TradesPage() {
                       {new Date(trade.entry_date).toLocaleDateString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      ${trade.entry_price.toFixed(2)}
+                      {formatCurrency(trade.entry_price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {trade.exit_price ? `$${trade.exit_price.toFixed(2)}` : '-'}
+                      {formatCurrency(trade.exit_price)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {trade.quantity}
@@ -143,8 +151,12 @@ function TradesPage() {
                         {trade.status}
                       </span>
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${trade.profit_loss ? (trade.profit_loss >= 0 ? 'text-green-600' : 'text-red-600') : 'text-gray-500'}`}>
-                      {trade.profit_loss ? `$${trade.profit_loss.toFixed(2)} (${trade.profit_loss_percent.toFixed(2)}%)` : '-'}
+                    <td
+                      className={`px-6 py-4 whitespace-nowrap text-sm font-medium ${getProfitLossClass(
+                        trade.profit_loss
+                      )}`}
+                    >
+                      {formatProfitLoss(trade.profit_loss, trade.profit_loss_percent)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       <button
@@ -178,6 +190,29 @@ function FilterButton({ label, active, onClick }) {
       {label}
     </button>
   )
+}
+
+const isValidNumber = (value) => typeof value === 'number' && Number.isFinite(value)
+
+const formatCurrency = (value) => (isValidNumber(value) ? `$${value.toFixed(2)}` : '-')
+
+const formatPercent = (value) => (isValidNumber(value) ? `${value.toFixed(2)}%` : '-')
+
+const getProfitLossClass = (profitLoss) => {
+  if (!isValidNumber(profitLoss)) {
+    return 'text-gray-500'
+  }
+
+  return profitLoss >= 0 ? 'text-green-600' : 'text-red-600'
+}
+
+const formatProfitLoss = (profitLoss, profitLossPercent) => {
+  if (!isValidNumber(profitLoss)) {
+    return '-'
+  }
+
+  const percentDisplay = formatPercent(profitLossPercent)
+  return percentDisplay !== '-' ? `${formatCurrency(profitLoss)} (${percentDisplay})` : formatCurrency(profitLoss)
 }
 
 export default TradesPage
